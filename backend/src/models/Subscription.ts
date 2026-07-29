@@ -26,6 +26,4 @@ const subscriptionSchema = new Schema<ISubscription>(
   { timestamps: { createdAt: true, updatedAt: false } }
 )
 
-subscriptionSchema.index({ userId: 1 })
-
 export default mongoose.model<ISubscription>('Subscription', subscriptionSchema)
