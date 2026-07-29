@@ -1,4 +1,3 @@
-import fs from 'fs'
 import Groq from 'groq-sdk'
 
 const groq = new Groq({
@@ -29,15 +28,14 @@ interface DateResult {
   event: string
 }
 
-export const analyzeImage = async (imagePath: string, mimeType: string): Promise<{
+export const analyzeImage = async (imageBuffer: Buffer, mimeType: string): Promise<{
   summary: string
   description: string
   tags: string[]
   entities: EntityResult
 }> => {
   try {
-    const buffer = fs.readFileSync(imagePath)
-    const base64 = buffer.toString('base64')
+    const base64 = imageBuffer.toString('base64')
     const dataUrl = `data:${mimeType};base64,${base64}`
 
     const response = await groq.chat.completions.create({
@@ -50,7 +48,7 @@ export const analyzeImage = async (imagePath: string, mimeType: string): Promise
           - description: a detailed description of the image contents
           - tags: array of 3-7 relevant keywords
           - entities: object with people, companies, locations, products, amounts arrays
-          Return ONLY valid JSON.`,
+          Return ONLY valid JSON. No markdown. No code fences. Just the raw JSON object.`,
         },
         {
           role: 'user',
@@ -61,11 +59,11 @@ export const analyzeImage = async (imagePath: string, mimeType: string): Promise
         },
       ],
       temperature: 0.3,
-      response_format: { type: 'json_object' },
     })
 
     const content = response.choices[0]?.message?.content || '{}'
-    const parsed = JSON.parse(content)
+    const cleaned = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
+    const parsed = JSON.parse(cleaned)
     return {
       summary: parsed.summary || 'Image analyzed',
       description: parsed.description || '',

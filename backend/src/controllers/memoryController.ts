@@ -2,7 +2,6 @@ import { Request, Response } from 'express'
 import Memory from '../models/Memory'
 import File from '../models/File'
 import TimelineEvent from '../models/TimelineEvent'
-import path from 'path'
 import { uploadToStorage, deleteFromStorage } from '../services/fileService'
 import { summarizeText, extractEntities, extractDates, generateTags, generateRelations, analyzeImage } from '../services/aiService'
 import { calculateImportance } from '../services/importanceService'
@@ -126,8 +125,7 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
     let datesResult: any[] = []
 
     if (file.mimetype.startsWith('image/')) {
-      const uploadDir = path.join(__dirname, '../../uploads')
-      const imageResult = await analyzeImage(path.join(uploadDir, fileRecord.filename), file.mimetype)
+      const imageResult = await analyzeImage(file.buffer, file.mimetype)
       aiSummary = imageResult.summary
       content = imageResult.description
       tags = imageResult.tags
