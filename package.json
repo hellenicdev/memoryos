@@ -1,0 +1,35 @@
+{
+  "name": "memoryos",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "homepage": "https://hellenicdev.github.io/memoryos",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "deploy": "npm run build && gh-pages -d dist"
+  },
+  "dependencies": {
+    "@marsidev/react-turnstile": "^1.5.4",
+    "axios": "^1.18.1",
+    "framer-motion": "^12.43.0",
+    "jwt-decode": "^4.0.0",
+    "lucide-react": "^1.27.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-force-graph-2d": "^1.29.1",
+    "react-router-dom": "^7.18.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "gh-pages": "^6.3.0",
+    "oxlint": "^1.71.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.1"
+  }
+}
