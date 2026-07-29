@@ -19,10 +19,11 @@ const plans = [
   },
   {
     name: 'Premium',
-    price: 'TBD',
+    price: '€7',
     period: '/month',
     badge: 'badge-premium',
     popular: true,
+    url: 'https://ko-fi.com/summary/853500ea-e4d9-4965-bec2-d44401570cc9',
     features: [
       '50 GB storage',
       '1,000 AI queries/month',
@@ -33,9 +34,10 @@ const plans = [
   },
   {
     name: 'Team',
-    price: 'TBD',
+    price: '€11',
     period: '/month',
     badge: 'badge-team',
+    url: 'https://ko-fi.com/summary/a3a86a11-a6f0-4211-a59b-157d7b69162e',
     features: [
       '100 GB storage',
       '5,000 AI queries/month',
@@ -143,7 +145,7 @@ const Billing = () => {
                 <button
                   className="button button-primary"
                   style={{ width: '100%', justifyContent: 'center' }}
-                  onClick={() => alert('Ko-fi subscription integration coming soon. You\'ll be redirected to Ko-fi to complete payment.')}
+                  onClick={() => window.open(plan.url, '_blank')}
                 >
                   <ExternalLink size={14} /> Subscribe via Ko-fi
                 </button>
