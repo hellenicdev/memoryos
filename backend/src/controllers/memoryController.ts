@@ -1,5 +1,6 @@
 import { Request, Response } from 'express'
 import Memory from '../models/Memory'
+import File from '../models/File'
 import TimelineEvent from '../models/TimelineEvent'
 import path from 'path'
 import { uploadToStorage, deleteFromStorage } from '../services/fileService'
@@ -9,6 +10,8 @@ import { getPlanLimits } from '../services/planService'
 import { AppError } from '../middleware/errorHandler'
 import User from '../models/User'
 import { AuthRequest } from '../middleware/authMiddleware'
+
+const pdfParse = require('pdf-parse')
 
 export const getMemories = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -66,6 +69,11 @@ export const getMemoryById = async (req: AuthRequest, res: Response): Promise<vo
       return
     }
 
+    let file = null
+    if (memory.fileId) {
+      file = await File.findById(memory.fileId).lean()
+    }
+
     const relatedMemories = await Memory.find({
       userId: req.user!.id,
       _id: { $ne: memory._id },
@@ -81,7 +89,7 @@ export const getMemoryById = async (req: AuthRequest, res: Response): Promise<vo
 
     const timelineEvents = await TimelineEvent.find({ memoryId: memory._id }).sort({ date: -1 }).lean()
 
-    res.json({ success: true, memory, relatedMemories, timelineEvents })
+    res.json({ success: true, memory: { ...memory, file }, relatedMemories, timelineEvents })
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch memory' })
   }
@@ -124,6 +132,32 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
       content = imageResult.description
       tags = imageResult.tags
       entityResult = imageResult.entities
+    } else if (file.mimetype === 'application/pdf') {
+      try {
+        const pdfData = await pdfParse(file.buffer)
+        content = pdfData.text
+      } catch {
+        content = ''
+      }
+      if (content) {
+        const [summaryResult, entityResultData, datesResultData, tagsResult] = await Promise.all([
+          summarizeText(content),
+          extractEntities(content),
+          extractDates(content),
+          generateTags(content),
+        ])
+        aiSummary = summaryResult.summary
+        tags = tagsResult
+        entityResult = entityResultData
+        datesResult = datesResultData
+      } else {
+        const [summaryResult, tagsResult] = await Promise.all([
+          summarizeText(title),
+          generateTags(title),
+        ])
+        aiSummary = summaryResult.summary
+        tags = tagsResult
+      }
     } else if (file.mimetype === 'text/plain') {
       content = file.buffer.toString('utf-8')
       const [summaryResult, entityResultData, datesResultData, tagsResult] = await Promise.all([

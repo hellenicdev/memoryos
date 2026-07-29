@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trash2, Heart, Calendar, Tag, Brain } from 'lucide-react'
+import { ArrowLeft, Trash2, Heart, Calendar, Tag, Brain, FileText, Download } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Loading from '../components/Loading'
 import Timeline from '../components/Timeline'
 import api from '../services/api'
+
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'
 
 const MemoryDetails = () => {
   const { id } = useParams()
@@ -57,12 +59,33 @@ const MemoryDetails = () => {
 
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <div style={{ flex: '1 1 300px' }}>
-            <div className="card" style={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
-              <div style={{ textAlign: 'center' }}>
-                <Brain size={48} style={{ color: 'var(--text-muted)', marginBottom: 12 }} />
-                <p style={{ color: 'var(--text-muted)' }}>File preview</p>
+            {memory.file ? (
+              <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: 300 }}>
+                {memory.file.mimeType?.startsWith('image/') ? (
+                  <img
+                    src={`${API_BASE}${memory.file.url}`}
+                    alt={memory.title}
+                    style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'contain', background: '#000' }}
+                  />
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}>
+                    <FileText size={48} style={{ color: 'var(--text-muted)', marginBottom: 12 }} />
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 4 }}>{memory.file.originalName}</p>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 16 }}>{(memory.file.size / 1024).toFixed(1)} KB</p>
+                    <a href={`${API_BASE}${memory.file.url}`} target="_blank" rel="noreferrer" className="button button-secondary">
+                      <Download size={14} /> Download file
+                    </a>
+                  </div>
+                )}
               </div>
-            </div>
+            ) : (
+              <div className="card" style={{ minHeight: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <Brain size={48} style={{ color: 'var(--text-muted)', marginBottom: 12 }} />
+                  <p style={{ color: 'var(--text-muted)' }}>No file attached</p>
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ flex: '2 1 400px' }}>
