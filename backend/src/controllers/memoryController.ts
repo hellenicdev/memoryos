@@ -1,8 +1,9 @@
 import { Request, Response } from 'express'
 import Memory from '../models/Memory'
 import TimelineEvent from '../models/TimelineEvent'
+import path from 'path'
 import { uploadToStorage, deleteFromStorage } from '../services/fileService'
-import { summarizeText, extractEntities, extractDates, generateTags, generateRelations } from '../services/aiService'
+import { summarizeText, extractEntities, extractDates, generateTags, generateRelations, analyzeImage } from '../services/aiService'
 import { calculateImportance } from '../services/importanceService'
 import { getPlanLimits } from '../services/planService'
 import { AppError } from '../middleware/errorHandler'
@@ -111,31 +112,57 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
     const title = file.originalname.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
 
     let content = ''
-    if (file.mimetype === 'text/plain') {
-      content = file.buffer.toString('utf-8')
-    }
+    let aiSummary = ''
+    let tags: string[] = []
+    let entityResult = { people: [], companies: [], locations: [], products: [], amounts: [], category: 'other' } as any
+    let datesResult: any[] = []
 
-    const [summaryResult, entityResult, datesResult, tags] = await Promise.all([
-      summarizeText(content || title),
-      extractEntities(content || title),
-      extractDates(content || title),
-      generateTags(content || title),
-    ])
+    if (file.mimetype.startsWith('image/')) {
+      const uploadDir = path.join(__dirname, '../../uploads')
+      const imageResult = await analyzeImage(path.join(uploadDir, fileRecord.filename), file.mimetype)
+      aiSummary = imageResult.summary
+      content = imageResult.description
+      tags = imageResult.tags
+      entityResult = imageResult.entities
+    } else if (file.mimetype === 'text/plain') {
+      content = file.buffer.toString('utf-8')
+      const [summaryResult, entityResultData, datesResultData, tagsResult] = await Promise.all([
+        summarizeText(content),
+        extractEntities(content),
+        extractDates(content),
+        generateTags(content),
+      ])
+      aiSummary = summaryResult.summary
+      tags = tagsResult
+      entityResult = entityResultData
+      datesResult = datesResultData
+    } else {
+      const [summaryResult, entityResultData, tagsResult] = await Promise.all([
+        summarizeText(title),
+        extractEntities(title),
+        generateTags(title),
+      ])
+      aiSummary = summaryResult.summary
+      tags = tagsResult
+      entityResult = entityResultData
+    }
 
     const importanceScore = calculateImportance({
       hasFinancialInfo: entityResult.amounts.length > 0,
       hasImportantDates: datesResult.length > 0,
       hasProjectConnection: false,
       userMarkedFavorite: false,
-      aiDetectedImportance: summaryResult.confidence,
+      aiDetectedImportance: aiSummary ? 0.5 : 0,
     })
+
+    const memoryType = file.mimetype.startsWith('image/') ? 'image' : entityResult.category || 'document'
 
     const memory = await Memory.create({
       userId: req.user!.id,
       title,
-      type: summaryResult.category || 'document',
+      type: memoryType,
       content: content || undefined,
-      aiSummary: summaryResult.summary || undefined,
+      aiSummary: aiSummary || undefined,
       tags,
       entities: entityResult,
       importanceScore,
@@ -156,9 +183,9 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
       .select('aiSummary title')
       .lean()
 
-    if (existingMemories.length > 0) {
+    if (existingMemories.length > 0 && content) {
       const summaries = existingMemories.map((m: any) => `${m.title}: ${m.aiSummary || ''}`)
-      generateRelations(content || title, summaries)
+      generateRelations(content, summaries)
     }
 
     user.storageUsed += file.size

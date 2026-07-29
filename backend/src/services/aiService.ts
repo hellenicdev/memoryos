@@ -1,3 +1,4 @@
+import fs from 'fs'
 import Groq from 'groq-sdk'
 
 const groq = new Groq({
@@ -5,6 +6,7 @@ const groq = new Groq({
 })
 
 const MODEL = 'llama-3.3-70b-versatile'
+const VISION_MODEL = 'llama-3.2-11b-vision-preview'
 
 interface AISummaryResult {
   summary: string
@@ -25,6 +27,60 @@ interface EntityResult {
 interface DateResult {
   date: string
   event: string
+}
+
+export const analyzeImage = async (imagePath: string, mimeType: string): Promise<{
+  summary: string
+  description: string
+  tags: string[]
+  entities: EntityResult
+}> => {
+  try {
+    const buffer = fs.readFileSync(imagePath)
+    const base64 = buffer.toString('base64')
+    const dataUrl = `data:${mimeType};base64,${base64}`
+
+    const response = await groq.chat.completions.create({
+      model: VISION_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a visual memory assistant. Analyze the image and return a JSON object with:
+          - summary: a concise 2-sentence summary of what the image shows
+          - description: a detailed description of the image contents
+          - tags: array of 3-7 relevant keywords
+          - entities: object with people, companies, locations, products, amounts arrays
+          Return ONLY valid JSON.`,
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Analyze this image in detail.' },
+            { type: 'image_url', image_url: { url: dataUrl } },
+          ] as any,
+        },
+      ],
+      temperature: 0.3,
+      response_format: { type: 'json_object' },
+    })
+
+    const content = response.choices[0]?.message?.content || '{}'
+    const parsed = JSON.parse(content)
+    return {
+      summary: parsed.summary || 'Image analyzed',
+      description: parsed.description || '',
+      tags: Array.isArray(parsed.tags) ? parsed.tags : [],
+      entities: parsed.entities || { people: [], companies: [], locations: [], products: [], amounts: [], category: 'other' },
+    }
+  } catch (error) {
+    console.error('AI image analysis error:', error)
+    return {
+      summary: 'Image analysis unavailable',
+      description: '',
+      tags: [],
+      entities: { people: [], companies: [], locations: [], products: [], amounts: [], category: 'other' },
+    }
+  }
 }
 
 export const summarizeText = async (text: string): Promise<AISummaryResult> => {
