@@ -61,7 +61,7 @@ export const analyzeImage = async (imageBuffer: Buffer, mimeType: string): Promi
       }),
     })
 
-    const body = await response.json()
+    const body: any = await response.json()
 
     if (!response.ok) {
       console.error('Groq vision API error:', response.status, JSON.stringify(body))
