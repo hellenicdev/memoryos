@@ -5,7 +5,7 @@ const groq = new Groq({
 })
 
 const MODEL = 'llama-3.3-70b-versatile'
-const VISION_MODEL = 'llama-3.2-11b-vision-preview'
+const VISION_MODEL = 'qwen/qwen3.6-27b'
 
 interface AISummaryResult {
   summary: string
@@ -38,30 +38,42 @@ export const analyzeImage = async (imageBuffer: Buffer, mimeType: string): Promi
     const base64 = imageBuffer.toString('base64')
     const dataUrl = `data:${mimeType};base64,${base64}`
 
-    const response = await groq.chat.completions.create({
-      model: VISION_MODEL,
-      messages: [
-        {
-          role: 'system',
-          content: `You are a visual memory assistant. Analyze the image and return a JSON object with:
-          - summary: a concise 2-sentence summary of what the image shows
-          - description: a detailed description of the image contents
-          - tags: array of 3-7 relevant keywords
-          - entities: object with people, companies, locations, products, amounts arrays
-          Return ONLY valid JSON. No markdown. No code fences. Just the raw JSON object.`,
-        },
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Analyze this image in detail.' },
-            { type: 'image_url', image_url: { url: dataUrl } },
-          ] as any,
-        },
-      ],
-      temperature: 0.3,
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY || ''}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Analyze this image in detail. Describe what you see, identify any text, objects, people, places. Return JSON with: summary (string), description (string), tags (array of strings), entities (object with people, companies, locations, products, amounts arrays).' },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+        temperature: 0.3,
+        max_tokens: 1024,
+        response_format: { type: 'json_object' },
+      }),
     })
 
-    const content = response.choices[0]?.message?.content || '{}'
+    const body = await response.json()
+
+    if (!response.ok) {
+      console.error('Groq vision API error:', response.status, JSON.stringify(body))
+      return {
+        summary: 'Image analysis unavailable',
+        description: '',
+        tags: [],
+        entities: { people: [], companies: [], locations: [], products: [], amounts: [], category: 'other' },
+      }
+    }
+
+    const content = body.choices?.[0]?.message?.content || '{}'
     const cleaned = content.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim()
     const parsed = JSON.parse(cleaned)
     return {
