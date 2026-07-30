@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Trash2, Heart, Calendar, Tag, Brain, FileText, Download } from 'lucide-react'
+import { ArrowLeft, Trash2, Heart, Calendar, Tag, Brain, FileText, Download, ImageIcon } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Loading from '../components/Loading'
 import Timeline from '../components/Timeline'
 import api from '../services/api'
 
-const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000'
+const API_BASE = (() => {
+  const url = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+  return url.replace(/\/api\/?$/, '')
+})()
 
 const MemoryDetails = () => {
   const { id } = useParams()
@@ -15,6 +18,7 @@ const MemoryDetails = () => {
   const [relatedMemories, setRelatedMemories] = useState<any[]>([])
   const [timelineEvents, setTimelineEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [imgError, setImgError] = useState(false)
 
   useEffect(() => {
     const fetchMemory = async () => {
@@ -62,10 +66,29 @@ const MemoryDetails = () => {
             {memory.file ? (
               <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: 300 }}>
                 {memory.file.mimeType?.startsWith('image/') ? (
-                  <img
+                  <div style={{ position: 'relative', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                    {!imgError ? (
+                      <img
+                        src={`${API_BASE}${memory.file.url}`}
+                        alt={memory.title}
+                        style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'contain' }}
+                        onError={() => setImgError(true)}
+                      />
+                    ) : (
+                      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
+                        <ImageIcon size={32} style={{ marginBottom: 8 }} />
+                        <p>Image preview unavailable</p>
+                        <a href={`${API_BASE}${memory.file.url}`} target="_blank" rel="noreferrer" className="button button-secondary" style={{ marginTop: 12 }}>
+                          <Download size={14} /> Open original
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ) : memory.file.mimeType === 'application/pdf' ? (
+                  <embed
                     src={`${API_BASE}${memory.file.url}`}
-                    alt={memory.title}
-                    style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'contain', background: '#000' }}
+                    type="application/pdf"
+                    style={{ width: '100%', minHeight: 500, display: 'block' }}
                   />
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}>

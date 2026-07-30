@@ -99,7 +99,7 @@ const Navbar = () => {
           <LogOut size={18} />
         </button>
 
-        <div className="navbar-avatar">
+        <div className="navbar-avatar" onClick={() => navigate('/settings')} style={{ cursor: 'pointer' }}>
           {user?.name?.charAt(0).toUpperCase()}
         </div>
       </div>

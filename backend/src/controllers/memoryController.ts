@@ -12,6 +12,13 @@ import { AuthRequest } from '../middleware/authMiddleware'
 
 const pdfParse = require('pdf-parse')
 
+const extractFallback = (text: string) => {
+  const amounts = (text.match(/[£€$]\s*\d+(?:[.,]\d+)?/g) || []).map((a: string) => a.trim())
+  const dates = (text.match(/\d{4}-\d{2}-\d{2}/g) || []).map((d: string) => ({ date: d, event: 'Referenced date' }))
+  const tags = text.toLowerCase().match(/\b(?:project|invoice|receipt|contract|report|budget|meeting|email|proposal|estimate|order|payment|summary|plan|design|spec)\b/g) || []
+  return { amounts, dates, tags: [...new Set(tags)] as string[] }
+}
+
 export const getMemories = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { type, date, projectId, favorites, page = '1', limit = '20' } = req.query
@@ -179,6 +186,14 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
       entityResult = entityResultData
     }
 
+    if (content && (aiSummary === 'AI analysis unavailable' || tags.length === 0)) {
+      const fallback = extractFallback(content)
+      if (tags.length === 0) tags = fallback.tags
+      if (datesResult.length === 0 && fallback.dates.length > 0) datesResult = fallback.dates
+      if (entityResult.amounts?.length === 0 && fallback.amounts.length > 0) entityResult.amounts = fallback.amounts
+      if (!aiSummary || aiSummary === 'AI analysis unavailable') aiSummary = title
+    }
+
     const importanceScore = calculateImportance({
       hasFinancialInfo: entityResult.amounts.length > 0,
       hasImportantDates: datesResult.length > 0,
@@ -312,6 +327,19 @@ export const createTextMemory = async (req: AuthRequest, res: Response): Promise
       extractDates(content),
       generateTags(content),
     ])
+
+    if (summaryResult.summary === 'AI analysis unavailable' || tags.length === 0) {
+      const fallback = extractFallback(content)
+      if (tags.length === 0) {
+        (tags as string[]).push(...fallback.tags)
+      }
+      if (datesResult.length === 0 && fallback.dates.length > 0) {
+        datesResult.push(...fallback.dates)
+      }
+      if (entityResult.amounts?.length === 0 && fallback.amounts.length > 0) {
+        entityResult.amounts = fallback.amounts
+      }
+    }
 
     const importanceScore = calculateImportance({
       hasFinancialInfo: entityResult.amounts.length > 0,
