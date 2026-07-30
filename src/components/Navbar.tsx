@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Bell, Settings as SettingsIcon, LogOut } from 'lucide-react'
 import api from '../services/api'
@@ -13,6 +14,7 @@ interface Notification {
 }
 
 const Navbar = () => {
+  const navigate = useNavigate()
   const { user, logout } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -86,7 +88,7 @@ const Navbar = () => {
 
         <button
           className="button-ghost"
-          onClick={() => { window.location.href = '/memoryos/settings' }}
+          onClick={() => navigate('/settings')}
           style={{ padding: 10, cursor: 'pointer', fontSize: '0' }}
           title="Settings"
         >

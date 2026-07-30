@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import AppLayout from './components/layout/AppLayout'
+import CookieConsent from './components/CookieConsent'
 import Login from './pages/Login'
 import './styles/dashboard.css'
 import './styles/components.css'
@@ -21,6 +22,8 @@ function App() {
   const { user } = useAuth()
 
   return (
+    <>
+    <CookieConsent />
     <Routes>
       <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Landing />} />
       <Route path="/login" element={user ? <Navigate to="/dashboard" /> : <Login />} />
@@ -42,6 +45,7 @@ function App() {
 
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>
+    </>
   )
 }
 

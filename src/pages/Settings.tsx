@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Navbar from '../components/Navbar'
 import { useAuth } from '../context/AuthContext'
-import { User, Shield, Download, Trash2, ExternalLink } from 'lucide-react'
+import { User, Shield, Download, Trash2, ExternalLink, FileText } from 'lucide-react'
 import api from '../services/api'
 
 const Settings = () => {
@@ -151,6 +151,23 @@ const Settings = () => {
           <button className="button button-secondary" onClick={handleExport} style={{ width: '100%', justifyContent: 'center' }}>
             <Download size={14} /> Export all data
           </button>
+        </div>
+
+        <div className="settings-section">
+          <h2><FileText size={16} style={{ marginRight: 8 }} />Privacy & data</h2>
+          <div className="card" style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', lineHeight: 1.7 }}>
+            <p style={{ marginBottom: 12 }}>
+              MemoryOS stores your uploaded documents, extracted text, and AI-generated summaries on secure servers.
+              Your data is used only to power your personal memory system and is never shared with third parties.
+            </p>
+            <p style={{ marginBottom: 12 }}>
+              AI analysis is performed via Groq API. Your content is processed temporarily and not stored by third-party AI providers.
+              You can export or delete all your data at any time.
+            </p>
+            <p>
+              For questions about your data, contact: privacy@memoryos.app
+            </p>
+          </div>
         </div>
 
         <div className="settings-section">
