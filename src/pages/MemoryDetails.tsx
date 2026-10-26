@@ -6,10 +6,19 @@ import Loading from '../components/Loading'
 import Timeline from '../components/Timeline'
 import api from '../services/api'
 
-const API_BASE = (() => {
-  const url = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
-  return url.replace(/\/api\/?$/, '')
-})()
+const filenameFromDisposition = (header?: string): string | undefined => {
+  if (!header) return undefined
+  const star = /filename\*=UTF-8''([^;]+)/i.exec(header)
+  if (star) {
+    try {
+      return decodeURIComponent(star[1].trim())
+    } catch {
+      return undefined
+    }
+  }
+  const plain = /filename="([^"]+)"/.exec(header)
+  return plain?.[1]
+}
 
 const MemoryDetails = () => {
   const { id } = useParams()
@@ -19,6 +28,9 @@ const MemoryDetails = () => {
   const [timelineEvents, setTimelineEvents] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [imgError, setImgError] = useState(false)
+  const [fileUrl, setFileUrl] = useState<string | null>(null)
+  const [fileLoading, setFileLoading] = useState(false)
+  const [downloadName, setDownloadName] = useState('download')
 
   useEffect(() => {
     const fetchMemory = async () => {
@@ -34,6 +46,59 @@ const MemoryDetails = () => {
     }
     fetchMemory()
   }, [id])
+
+  const fileId = memory?.file?._id as string | undefined
+  const fileMime = memory?.file?.mimeType as string | undefined
+  const fileOriginalName = memory?.file?.originalName as string | undefined
+
+  useEffect(() => {
+    if (!fileId) {
+      setFileUrl(null)
+      setFileLoading(false)
+      return
+    }
+
+    let objectUrl: string | null = null
+    let cancelled = false
+    setFileLoading(true)
+    setImgError(false)
+
+    const loadFile = async () => {
+      try {
+        const res = await api.get(`/files/${fileId}`, { responseType: 'blob' })
+        const typeHeader = String(res.headers['content-type'] || fileMime || 'application/octet-stream')
+        const blob = new Blob([res.data], { type: typeHeader.split(';')[0] })
+        objectUrl = URL.createObjectURL(blob)
+        if (cancelled) {
+          URL.revokeObjectURL(objectUrl)
+          return
+        }
+        setFileUrl(objectUrl)
+        setDownloadName(filenameFromDisposition(res.headers['content-disposition']) || fileOriginalName || 'download')
+      } catch {
+        if (!cancelled) setImgError(true)
+      } finally {
+        if (!cancelled) setFileLoading(false)
+      }
+    }
+
+    loadFile()
+    return () => {
+      cancelled = true
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+      setFileUrl(null)
+    }
+  }, [fileId, fileMime, fileOriginalName])
+
+  const handleDownload = () => {
+    if (!fileUrl) return
+    const link = document.createElement('a')
+    link.href = fileUrl
+    link.download = downloadName
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+  }
 
   const handleDelete = async () => {
     if (!confirm('Delete this memory?')) return
@@ -65,39 +130,47 @@ const MemoryDetails = () => {
           <div style={{ flex: '1 1 300px' }}>
             {memory.file ? (
               <div className="card" style={{ padding: 0, overflow: 'hidden', minHeight: 300 }}>
-                {memory.file.mimeType?.startsWith('image/') ? (
-                  <div style={{ position: 'relative', minHeight: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-                    {!imgError ? (
-                      <img
-                        src={`${API_BASE}${memory.file.url}`}
-                        alt={memory.title}
-                        style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'contain' }}
-                        onError={() => setImgError(true)}
-                      />
-                    ) : (
-                      <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <ImageIcon size={32} style={{ marginBottom: 8 }} />
-                        <p>Image preview unavailable</p>
-                        <a href={`${API_BASE}${memory.file.url}`} target="_blank" rel="noreferrer" className="button button-secondary" style={{ marginTop: 12 }}>
-                          <Download size={14} /> Open original
-                        </a>
-                      </div>
-                    )}
+                {fileLoading ? (
+                  <Loading />
+                ) : memory.file.mimeType?.startsWith('image/') && fileUrl && !imgError ? (
+                  <div style={{ position: 'relative', minHeight: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                    <img
+                      src={fileUrl}
+                      alt={memory.title}
+                      style={{ width: '100%', height: 'auto', display: 'block', maxHeight: 400, objectFit: 'contain' }}
+                      onError={() => setImgError(true)}
+                    />
+                    <div style={{ padding: 16 }}>
+                      <button type="button" className="button button-secondary" onClick={handleDownload}>
+                        <Download size={14} /> Download file
+                      </button>
+                    </div>
                   </div>
-                ) : memory.file.mimeType === 'application/pdf' ? (
-                  <embed
-                    src={`${API_BASE}${memory.file.url}`}
-                    type="application/pdf"
-                    style={{ width: '100%', minHeight: 500, display: 'block' }}
-                  />
+                ) : memory.file.mimeType === 'application/pdf' && fileUrl ? (
+                  <div>
+                    <embed
+                      src={fileUrl}
+                      type="application/pdf"
+                      style={{ width: '100%', minHeight: 500, display: 'block' }}
+                    />
+                    <div style={{ padding: 16 }}>
+                      <button type="button" className="button button-secondary" onClick={handleDownload}>
+                        <Download size={14} /> Download file
+                      </button>
+                    </div>
+                  </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 200, padding: 40 }}>
-                    <FileText size={48} style={{ color: 'var(--text-muted)', marginBottom: 12 }} />
+                    {memory.file.mimeType?.startsWith('image/') ? <ImageIcon size={48} style={{ color: 'var(--text-muted)', marginBottom: 12 }} /> : <FileText size={48} style={{ color: 'var(--text-muted)', marginBottom: 12 }} />}
                     <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: 4 }}>{memory.file.originalName}</p>
                     <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: 16 }}>{(memory.file.size / 1024).toFixed(1)} KB</p>
-                    <a href={`${API_BASE}${memory.file.url}`} target="_blank" rel="noreferrer" className="button button-secondary">
-                      <Download size={14} /> Download file
-                    </a>
+                    {fileUrl ? (
+                      <button type="button" className="button button-secondary" onClick={handleDownload}>
+                        <Download size={14} /> Download file
+                      </button>
+                    ) : (
+                      <p style={{ color: 'var(--danger)', fontSize: '0.85rem' }}>File preview unavailable</p>
+                    )}
                   </div>
                 )}
               </div>
