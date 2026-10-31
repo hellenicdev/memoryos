@@ -6,14 +6,23 @@ interface UploadBoxProps {
   onUploadComplete: () => void
 }
 
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 const UploadBox = ({ onUploadComplete }: UploadBoxProps) => {
   const [dragging, setDragging] = useState(false)
   const [status, setStatus] = useState<'idle' | 'uploading' | 'analyzing' | 'done' | 'error'>('idle')
+  const [errorMessage, setErrorMessage] = useState('Unsupported file type or upload error')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleFile = useCallback(async (file: File) => {
     const allowed = ['application/pdf', 'image/png', 'image/jpeg', 'text/plain']
     if (!allowed.includes(file.type)) {
+      setErrorMessage('Unsupported file type or upload error')
+      setStatus('error')
+      return
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setErrorMessage('File exceeds the 10 MB upload limit')
       setStatus('error')
       return
     }
@@ -33,7 +42,9 @@ const UploadBox = ({ onUploadComplete }: UploadBoxProps) => {
         setStatus('idle')
         onUploadComplete()
       }, 1500)
-    } catch {
+    } catch (error: unknown) {
+      const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message
+      setErrorMessage(message || 'Unsupported file type or upload error')
       setStatus('error')
     }
   }, [onUploadComplete])
@@ -65,7 +76,7 @@ const UploadBox = ({ onUploadComplete }: UploadBoxProps) => {
           <>
             <Upload size={48} />
             <h3>Upload a memory</h3>
-            <p>Drag and drop a file here, or click to browse</p>
+            <p>Drag and drop a file here, or click to browse. 10 MB maximum.</p>
             <div className="upload-formats">
               <span className="upload-format">PDF</span>
               <span className="upload-format">PNG</span>
@@ -97,7 +108,7 @@ const UploadBox = ({ onUploadComplete }: UploadBoxProps) => {
           <>
             <div style={{ fontSize: 48 }}>✕</div>
             <h3>Upload failed</h3>
-            <p style={{ fontSize: '0.85rem', color: 'var(--danger)' }}>Unsupported file type or upload error</p>
+            <p style={{ fontSize: '0.85rem', color: 'var(--danger)' }}>{errorMessage}</p>
           </>
         )}
       </div>

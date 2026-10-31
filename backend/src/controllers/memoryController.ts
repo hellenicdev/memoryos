@@ -1,8 +1,8 @@
-import { Request, Response } from 'express'
+import { Response } from 'express'
 import Memory from '../models/Memory'
 import File from '../models/File'
 import TimelineEvent from '../models/TimelineEvent'
-import { uploadToStorage, deleteFromStorage } from '../services/fileService'
+import { uploadToStorage, deleteFromStorage, discardUpload } from '../services/fileService'
 import { summarizeText, extractEntities, extractDates, generateTags, generateRelations, analyzeImage } from '../services/aiService'
 import { calculateImportance } from '../services/importanceService'
 import { getPlanLimits } from '../services/planService'
@@ -77,7 +77,10 @@ export const getMemoryById = async (req: AuthRequest, res: Response): Promise<vo
 
     let file = null
     if (memory.fileId) {
-      file = await File.findById(memory.fileId).lean()
+      const record = await File.findById(memory.fileId).lean()
+      if (record) {
+        file = { ...record, url: `/api/files/${record._id.toString()}` }
+      }
     }
 
     const relatedMemories = await Memory.find({
@@ -102,8 +105,9 @@ export const getMemoryById = async (req: AuthRequest, res: Response): Promise<vo
 }
 
 export const uploadMemory = async (req: AuthRequest, res: Response): Promise<void> => {
+  const file = req.file
+  let storedId: string | null = null
   try {
-    const file = req.file
     if (!file) {
       res.status(400).json({ success: false, message: 'No file provided' })
       return
@@ -111,17 +115,21 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
 
     const user = await User.findById(req.user!.id)
     if (!user) {
+      await discardUpload(file)
       res.status(404).json({ success: false, message: 'User not found' })
       return
     }
 
     const limits = getPlanLimits(user.plan)
     if (user.storageUsed + file.size > limits.storageLimit) {
+      await discardUpload(file)
       res.status(403).json({ success: false, message: 'Storage limit reached. Please upgrade your plan.' })
       return
     }
 
-    const { fileRecord } = await uploadToStorage(req.user!.id, file)
+    const stored = await uploadToStorage(req.user!.id, file)
+    storedId = stored.fileRecord._id.toString()
+    const { fileRecord, mimeType, buffer } = stored
 
     const title = file.originalname.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
 
@@ -131,15 +139,15 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
     let entityResult = { people: [], companies: [], locations: [], products: [], amounts: [], category: 'other' } as any
     let datesResult: any[] = []
 
-    if (file.mimetype.startsWith('image/')) {
-      const imageResult = await analyzeImage(file.buffer, file.mimetype)
+    if (mimeType.startsWith('image/')) {
+      const imageResult = await analyzeImage(buffer, mimeType)
       aiSummary = imageResult.summary
       content = imageResult.description
       tags = imageResult.tags
       entityResult = imageResult.entities
-    } else if (file.mimetype === 'application/pdf') {
+    } else if (mimeType === 'application/pdf') {
       try {
-        const pdfData = await pdfParse(file.buffer)
+        const pdfData = await pdfParse(buffer)
         content = pdfData.text
       } catch {
         content = ''
@@ -163,8 +171,8 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
         aiSummary = summaryResult.summary
         tags = tagsResult
       }
-    } else if (file.mimetype === 'text/plain') {
-      content = file.buffer.toString('utf-8')
+    } else if (mimeType === 'text/plain') {
+      content = buffer.toString('utf-8')
       const [summaryResult, entityResultData, datesResultData, tagsResult] = await Promise.all([
         summarizeText(content),
         extractEntities(content),
@@ -202,7 +210,7 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
       aiDetectedImportance: aiSummary ? 0.5 : 0,
     })
 
-    const memoryType = file.mimetype.startsWith('image/') ? 'image' : entityResult.category || 'document'
+    const memoryType = mimeType.startsWith('image/') ? 'image' : entityResult.category || 'document'
 
     const memory = await Memory.create({
       userId: req.user!.id,
@@ -215,6 +223,7 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
       importanceScore,
       fileId: fileRecord._id,
     })
+    storedId = null
 
     for (const dateInfo of datesResult) {
       await TimelineEvent.create({
@@ -235,12 +244,21 @@ export const uploadMemory = async (req: AuthRequest, res: Response): Promise<voi
       generateRelations(content, summaries)
     }
 
-    user.storageUsed += file.size
+    user.storageUsed += buffer.length
     await user.save()
 
     res.status(201).json({ success: true, memory })
   } catch (error) {
+    if (storedId) {
+      await deleteFromStorage(storedId).catch(() => {})
+    } else {
+      await discardUpload(file)
+    }
     console.error('Upload error:', error)
+    if (error instanceof AppError) {
+      res.status(error.statusCode).json({ success: false, message: error.message })
+      return
+    }
     res.status(500).json({ success: false, message: 'Upload failed' })
   }
 }
@@ -254,21 +272,16 @@ export const deleteMemory = async (req: AuthRequest, res: Response): Promise<voi
     }
 
     if (memory.fileId) {
-      await deleteFromStorage(memory.fileId.toString())
+      const size = await deleteFromStorage(memory.fileId.toString())
+      const user = await User.findById(req.user!.id)
+      if (user) {
+        user.storageUsed = Math.max(0, user.storageUsed - size)
+        await user.save()
+      }
     }
 
     await TimelineEvent.deleteMany({ memoryId: memory._id })
     await Memory.findByIdAndDelete(memory._id)
-
-    const user = await User.findById(req.user!.id)
-    if (user && memory.fileId) {
-      const File = require('../models/File').default
-      const fileRecord = await File.findById(memory.fileId)
-      if (fileRecord) {
-        user.storageUsed = Math.max(0, user.storageUsed - fileRecord.size)
-        await user.save()
-      }
-    }
 
     res.json({ success: true, message: 'Memory deleted' })
   } catch (error) {
