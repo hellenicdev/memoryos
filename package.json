@@ -14,7 +14,7 @@
   "dependencies": {
     "@marsidev/react-turnstile": "^1.5.4",
     "axios": "^1.18.1",
-    "framer-motion": "^12.43.0",
+    "framer-motion": "^14.6.0",
     "jwt-decode": "^4.0.0",
     "lucide-react": "^1.27.0",
     "react": "^19.2.7",
