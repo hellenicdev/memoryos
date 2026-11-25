@@ -26,8 +26,9 @@ app.use(cors({
   exposedHeaders: ['Content-Disposition'],
 }))
 app.use(compression())
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true }))
+// File uploads go through multer, so JSON/form bodies can stay small.
+app.use(express.json({ limit: '2mb' }))
+app.use(express.urlencoded({ extended: true, limit: '2mb' }))
 
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
@@ -56,12 +57,18 @@ const start = async () => {
   app.use('/api/knowledge', knowledgeRoutes)
   app.use('/api/files', fileRoutes)
 
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ success: false, message: 'Not found' })
+  })
+
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-    console.error('Error:', err.message)
-    const status = err.status || err.statusCode || 500
+    if (res.headersSent) return
+    const status = Number(err?.status || err?.statusCode) || 500
+    if (status >= 500) console.error('Error:', err?.message)
     res.status(status).json({
       success: false,
-      message: err.message || 'Internal server error',
+      // Don't leak internal error details (DB errors, stack hints) on 5xx.
+      message: status >= 500 ? 'Internal server error' : (err?.message || 'Request failed'),
     })
   })
 
@@ -70,4 +77,7 @@ const start = async () => {
   })
 }
 
-start().catch(console.error)
+start().catch((err) => {
+  console.error('Failed to start server:', err?.message || err)
+  process.exit(1)
+})
